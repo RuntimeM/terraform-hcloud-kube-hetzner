@@ -108,7 +108,7 @@ locals {
         firewall_id                                = hcloud_firewall.k3s.id
         cluster_name                               = local.cluster_prefix
         node_pools                                 = local.autoscaler_nodepools_by_network[network_key]
-        enable_ipv4                                = var.autoscaler_enable_public_ipv4 && !local.use_nat_router
+        enable_ipv4                                = var.autoscaler_enable_public_ipv4 && (!local.use_nat_router || var.autoscaler_public_ipv4_bypass_nat_router)
         enable_ipv6                                = var.autoscaler_enable_public_ipv6 && !local.use_nat_router
       }
     )
@@ -220,8 +220,8 @@ data "cloudinit_config" "autoscaler_config" {
         ))
         cloudinit_write_files_common        = join("", [local.cloudinit_write_files_common, local.autoscaler_node_annotation_write_files_yaml[count.index]])
         cloudinit_runcmd_common             = join("", [local.cloudinit_runcmd_common, local.autoscaler_node_annotation_runcmd_yaml[count.index]])
-        private_ipv4_default_route          = !var.autoscaler_enable_public_ipv4 || local.use_nat_router
-        public_ipv4_default_route           = var.autoscaler_enable_public_ipv4 && !local.use_nat_router
+        private_ipv4_default_route          = !var.autoscaler_enable_public_ipv4 || (local.use_nat_router && !var.autoscaler_public_ipv4_bypass_nat_router)
+        public_ipv4_default_route           = var.autoscaler_enable_public_ipv4 && (!local.use_nat_router || var.autoscaler_public_ipv4_bypass_nat_router)
         public_ipv6_default_route           = var.autoscaler_enable_public_ipv6 && !local.use_nat_router
         network_gw_ipv4                     = local.network_gw_ipv4_by_network_id[local.autoscaler_effective_network_id_by_index[count.index] == 0 ? data.hcloud_network.k3s.id : local.autoscaler_effective_network_id_by_index[count.index]]
         multinetwork_public_overlay_enabled = local.multinetwork_overlay_enabled
@@ -273,8 +273,8 @@ data "cloudinit_config" "autoscaler_config_rke2" {
         install_k8s_agent_script            = join("\n", concat(local.install_k8s_agent, ["systemctl start rke2-agent", "systemctl enable rke2-agent"]))
         cloudinit_write_files_common        = join("", [local.cloudinit_write_files_common, local.autoscaler_node_annotation_write_files_yaml[count.index]])
         cloudinit_runcmd_common             = join("", [local.cloudinit_runcmd_common, local.autoscaler_node_annotation_runcmd_yaml[count.index]])
-        private_ipv4_default_route          = !var.autoscaler_enable_public_ipv4 || local.use_nat_router
-        public_ipv4_default_route           = var.autoscaler_enable_public_ipv4 && !local.use_nat_router
+        private_ipv4_default_route          = !var.autoscaler_enable_public_ipv4 || (local.use_nat_router && !var.autoscaler_public_ipv4_bypass_nat_router)
+        public_ipv4_default_route           = var.autoscaler_enable_public_ipv4 && (!local.use_nat_router || var.autoscaler_public_ipv4_bypass_nat_router)
         public_ipv6_default_route           = var.autoscaler_enable_public_ipv6 && !local.use_nat_router
         network_gw_ipv4                     = local.network_gw_ipv4_by_network_id[local.autoscaler_effective_network_id_by_index[count.index] == 0 ? data.hcloud_network.k3s.id : local.autoscaler_effective_network_id_by_index[count.index]]
         multinetwork_public_overlay_enabled = local.multinetwork_overlay_enabled

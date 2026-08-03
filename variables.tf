@@ -1919,6 +1919,12 @@ variable "autoscaler_enable_public_ipv4" {
   default     = true
 }
 
+variable "autoscaler_public_ipv4_bypass_nat_router" {
+  description = "Keep public IPv4 and its default route on autoscaled nodes when nat_router is configured. Use only for public workload node pools; other nodes remain private behind NAT."
+  type        = bool
+  default     = false
+}
+
 variable "autoscaler_enable_public_ipv6" {
   description = "Enable public IPv6 on nodes created by the Cluster Autoscaler."
   type        = bool

@@ -830,6 +830,9 @@ The example shows three control plane nodepools, each with one node, in differen
 * **`autoscaler_enable_public_ipv4` / `autoscaler_enable_public_ipv6` (Boolean, Optional):**
   * **Default:** `true`.
   * **Purpose:** If `false`, disables public IPv4/IPv6 on nodes created by the Cluster Autoscaler. Similar implications as for regular nodepools (private network only access if both are false).
+* **`autoscaler_public_ipv4_bypass_nat_router` (Boolean, Optional):**
+  * **Default:** `false`.
+  * **Purpose:** Keeps public IPv4 allocation and the public IPv4 default route on autoscaled workload nodes even when the rest of the cluster uses `nat_router`. Static node pools remain private. Enable this only when every configured autoscaler pool intentionally serves public traffic.
 
 ```terraform
   # Configuration of the Cluster Autoscaler binary
