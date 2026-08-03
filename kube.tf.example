@@ -719,7 +719,8 @@ module "kube-hetzner" {
   # }
 
   # Optional: allow external scraping of cluster-autoscaler metrics.
-  # This opens firewall access to NodePort 30085 (which forwards to autoscaler metrics port 8085).
+  # This opens firewall access to the configured autoscaler metrics NodePort
+  # (30085 by default, forwarding to pod port 8085).
   # Leave empty to keep metrics reachable only from inside the cluster.
   # cluster_autoscaler_metrics_firewall_source = ["myipv4", "10.0.0.0/8"]
 

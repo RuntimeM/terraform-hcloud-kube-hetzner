@@ -37,7 +37,7 @@ locals {
   }
   cluster_autoscaler_metrics_node_port_by_network = {
     for index, network_key in local.autoscaler_network_keys :
-    network_key => 30085 + index
+    network_key => var.cluster_autoscaler_metrics_node_port_start + index
   }
   cluster_autoscaler_metrics_node_ports = values(local.cluster_autoscaler_metrics_node_port_by_network)
 

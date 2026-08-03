@@ -1727,8 +1727,23 @@ variable "cluster_autoscaler_resource_values" {
 variable "cluster_autoscaler_metrics_firewall_source" {
   type        = list(string)
   default     = []
-  description = "Optional source CIDRs allowed to scrape cluster-autoscaler metrics through NodePort 30085 (maps to pod port 8085)."
+  description = "Optional source CIDRs allowed to scrape cluster-autoscaler metrics through its configured NodePort (maps to pod port 8085)."
 
+}
+
+variable "cluster_autoscaler_metrics_node_port_start" {
+  type        = number
+  default     = 30085
+  description = "First NodePort assigned to cluster-autoscaler metrics. Additional autoscaler networks increment this value by one."
+
+  validation {
+    condition = (
+      var.cluster_autoscaler_metrics_node_port_start >= 30000 &&
+      var.cluster_autoscaler_metrics_node_port_start <= 32760 &&
+      floor(var.cluster_autoscaler_metrics_node_port_start) == var.cluster_autoscaler_metrics_node_port_start
+    )
+    error_message = "cluster_autoscaler_metrics_node_port_start must be an integer between 30000 and 32760."
+  }
 }
 
 variable "autoscaler_nodepools" {
