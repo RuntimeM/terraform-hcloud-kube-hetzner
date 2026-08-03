@@ -301,8 +301,12 @@ resource "terraform_data" "autoscaled_nodes_registries" {
     user           = "root"
     private_key    = var.ssh_private_key
     agent_identity = local.ssh_agent_identity
-    host           = local.tailscale_use_tailnet_for_terraform ? "${each.value.name}.${local.tailscale_magicdns_domain}" : coalesce(try(one(each.value.network).ip, null), each.value.ipv4_address, each.value.ipv6_address)
-    port           = var.ssh_port
+    host = local.tailscale_use_tailnet_for_terraform ? "${each.value.name}.${local.tailscale_magicdns_domain}" : (
+      local.ssh_bastion.bastion_host != null
+      ? coalesce(try(one(each.value.network).ip, null), each.value.ipv4_address, each.value.ipv6_address)
+      : coalesce(each.value.ipv4_address, each.value.ipv6_address, try(one(each.value.network).ip, null))
+    )
+    port = var.ssh_port
 
     bastion_host        = local.ssh_bastion.bastion_host
     bastion_port        = local.ssh_bastion.bastion_port
@@ -335,8 +339,12 @@ resource "terraform_data" "autoscaled_nodes_kubelet_config" {
     user           = "root"
     private_key    = var.ssh_private_key
     agent_identity = local.ssh_agent_identity
-    host           = local.tailscale_use_tailnet_for_terraform ? "${each.value.name}.${local.tailscale_magicdns_domain}" : coalesce(try(one(each.value.network).ip, null), each.value.ipv4_address, each.value.ipv6_address)
-    port           = var.ssh_port
+    host = local.tailscale_use_tailnet_for_terraform ? "${each.value.name}.${local.tailscale_magicdns_domain}" : (
+      local.ssh_bastion.bastion_host != null
+      ? coalesce(try(one(each.value.network).ip, null), each.value.ipv4_address, each.value.ipv6_address)
+      : coalesce(each.value.ipv4_address, each.value.ipv6_address, try(one(each.value.network).ip, null))
+    )
+    port = var.ssh_port
 
     bastion_host        = local.ssh_bastion.bastion_host
     bastion_port        = local.ssh_bastion.bastion_port
