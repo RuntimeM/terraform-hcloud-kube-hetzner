@@ -1763,6 +1763,8 @@ variable "autoscaler_nodepools" {
     network_scope      = optional(string, null)
     subnet_ip_range    = optional(string, null)
     join_endpoint_type = optional(string, null)
+    enable_public_ipv4 = optional(bool, null)
+    enable_public_ipv6 = optional(bool, null)
     taints = optional(list(object({
       key    = string
       value  = string
