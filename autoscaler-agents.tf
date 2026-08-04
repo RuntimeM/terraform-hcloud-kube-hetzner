@@ -17,33 +17,83 @@ locals {
     for index, nodePool in var.autoscaler_nodepools :
     index => nodePool.network_scope == "primary" ? 0 : coalesce(nodePool.network_id, 0)
   }
-  autoscaler_network_keys = length(var.autoscaler_nodepools) == 0 ? [] : sort(distinct([
-    for index, nodePool in var.autoscaler_nodepools : tostring(local.autoscaler_effective_network_id_by_index[index])
+  autoscaler_public_ipv4_by_index = {
+    for index, nodePool in var.autoscaler_nodepools :
+    index => coalesce(nodePool.enable_public_ipv4, var.autoscaler_enable_public_ipv4)
+  }
+  autoscaler_public_ipv6_by_index = {
+    for index, nodePool in var.autoscaler_nodepools :
+    index => coalesce(nodePool.enable_public_ipv6, var.autoscaler_enable_public_ipv6)
+  }
+  autoscaler_group_by_index = {
+    for index, nodePool in var.autoscaler_nodepools :
+    index => join("-", [
+      tostring(local.autoscaler_effective_network_id_by_index[index]),
+      local.autoscaler_public_ipv4_by_index[index] ? "v4" : "no-v4",
+      local.autoscaler_public_ipv6_by_index[index] ? "v6" : "no-v6",
+    ])
+  }
+  autoscaler_group_keys = length(var.autoscaler_nodepools) == 0 ? [] : sort(distinct([
+    for index, nodePool in var.autoscaler_nodepools : local.autoscaler_group_by_index[index]
   ]))
-  autoscaler_nodepools_by_network = {
-    for network_key in local.autoscaler_network_keys :
-    network_key => [
+  autoscaler_nodepools_by_group = {
+    for group_key in local.autoscaler_group_keys :
+    group_key => [
       for index, nodePool in var.autoscaler_nodepools : nodePool
-      if tostring(local.autoscaler_effective_network_id_by_index[index]) == network_key
+      if local.autoscaler_group_by_index[index] == group_key
     ]
   }
-  autoscaler_network_id_by_key = {
-    for network_key in local.autoscaler_network_keys :
-    network_key => network_key == "0" ? data.hcloud_network.k3s.id : tonumber(network_key)
+  autoscaler_network_id_by_group = {
+    for group_key in local.autoscaler_group_keys :
+    group_key => one(distinct([
+      for index, nodePool in var.autoscaler_nodepools :
+      local.autoscaler_effective_network_id_by_index[index]
+      if local.autoscaler_group_by_index[index] == group_key
+    ]))
   }
-  autoscaler_name_by_network = {
-    for network_key in local.autoscaler_network_keys :
-    network_key => length(local.autoscaler_network_keys) == 1 && network_key == "0" ? "cluster-autoscaler" : "cluster-autoscaler-net-${network_key}"
+  autoscaler_public_ipv4_by_group = {
+    for group_key in local.autoscaler_group_keys :
+    group_key => one(distinct([
+      for index, nodePool in var.autoscaler_nodepools :
+      local.autoscaler_public_ipv4_by_index[index]
+      if local.autoscaler_group_by_index[index] == group_key
+    ]))
   }
-  cluster_autoscaler_metrics_node_port_by_network = {
-    for index, network_key in local.autoscaler_network_keys :
-    network_key => var.cluster_autoscaler_metrics_node_port_start + index
+  autoscaler_public_ipv6_by_group = {
+    for group_key in local.autoscaler_group_keys :
+    group_key => one(distinct([
+      for index, nodePool in var.autoscaler_nodepools :
+      local.autoscaler_public_ipv6_by_index[index]
+      if local.autoscaler_group_by_index[index] == group_key
+    ]))
   }
-  cluster_autoscaler_metrics_node_ports = values(local.cluster_autoscaler_metrics_node_port_by_network)
+  autoscaler_network_id_by_group_resolved = {
+    for group_key, network_id in local.autoscaler_network_id_by_group :
+    group_key => network_id == 0 ? data.hcloud_network.k3s.id : network_id
+  }
+  autoscaler_name_by_group = {
+    for group_key in local.autoscaler_group_keys :
+    group_key => (
+      local.autoscaler_network_id_by_group[group_key] == 0 &&
+      local.autoscaler_public_ipv4_by_group[group_key] == var.autoscaler_enable_public_ipv4 &&
+      local.autoscaler_public_ipv6_by_group[group_key] == var.autoscaler_enable_public_ipv6
+    ) ? "cluster-autoscaler" : "cluster-autoscaler-${group_key}"
+  }
+  autoscaler_non_legacy_group_keys = [
+    for group_key in local.autoscaler_group_keys : group_key
+    if local.autoscaler_name_by_group[group_key] != "cluster-autoscaler"
+  ]
+  cluster_autoscaler_metrics_node_port_by_group = {
+    for group_key in local.autoscaler_group_keys :
+    group_key => local.autoscaler_name_by_group[group_key] == "cluster-autoscaler" ?
+    var.cluster_autoscaler_metrics_node_port_start :
+    var.cluster_autoscaler_metrics_node_port_start + index(local.autoscaler_non_legacy_group_keys, group_key) + 1
+  }
+  cluster_autoscaler_metrics_node_ports = values(local.cluster_autoscaler_metrics_node_port_by_group)
 
-  cluster_config_by_network = {
-    for network_key in local.autoscaler_network_keys :
-    network_key => {
+  cluster_config_by_group = {
+    for group_key in local.autoscaler_group_keys :
+    group_key => {
       imagesForArch = local.imageList
       nodeConfigs = {
         for index, nodePool in var.autoscaler_nodepools :
@@ -56,13 +106,13 @@ locals {
           },
           nodePool.subnet_ip_range == null ? {} : { subnetIPRange = nodePool.subnet_ip_range }
         )
-        if tostring(local.autoscaler_effective_network_id_by_index[index]) == network_key
+        if local.autoscaler_group_by_index[index] == group_key
       }
     }
   }
-  rke2_cluster_config_by_network = {
-    for network_key in local.autoscaler_network_keys :
-    network_key => {
+  rke2_cluster_config_by_group = {
+    for group_key in local.autoscaler_group_keys :
+    group_key => {
       imagesForArch = local.imageList
       nodeConfigs = {
         for index, nodePool in var.autoscaler_nodepools :
@@ -75,19 +125,19 @@ locals {
           },
           nodePool.subnet_ip_range == null ? {} : { subnetIPRange = nodePool.subnet_ip_range }
         )
-        if tostring(local.autoscaler_effective_network_id_by_index[index]) == network_key
+        if local.autoscaler_group_by_index[index] == group_key
       }
     }
   }
-  desired_cluster_config_by_network = local.kubernetes_distribution == "rke2" ? local.rke2_cluster_config_by_network : local.cluster_config_by_network
+  desired_cluster_config_by_group = local.kubernetes_distribution == "rke2" ? local.rke2_cluster_config_by_group : local.cluster_config_by_group
 
   autoscaler_yaml = length(var.autoscaler_nodepools) == 0 ? "" : join("\n", [
-    for network_key in local.autoscaler_network_keys : templatefile(
+    for group_key in local.autoscaler_group_keys : templatefile(
       "${path.module}/templates/autoscaler.yaml.tpl",
       {
-        autoscaler_name                            = local.autoscaler_name_by_network[network_key]
-        leader_election_resource_name              = local.autoscaler_name_by_network[network_key]
-        metrics_node_port                          = local.cluster_autoscaler_metrics_node_port_by_network[network_key]
+        autoscaler_name                            = local.autoscaler_name_by_group[group_key]
+        leader_election_resource_name              = local.autoscaler_name_by_group[group_key]
+        metrics_node_port                          = local.cluster_autoscaler_metrics_node_port_by_group[group_key]
         cloudinit_config                           = ""
         ca_image                                   = var.cluster_autoscaler_image
         ca_version                                 = var.cluster_autoscaler_version
@@ -101,15 +151,15 @@ locals {
         cluster_autoscaler_stderr_threshold        = var.cluster_autoscaler_stderr_threshold
         cluster_autoscaler_server_creation_timeout = tostring(var.cluster_autoscaler_server_creation_timeout)
         ssh_key                                    = local.hcloud_ssh_key_id
-        ipv4_subnet_id                             = local.autoscaler_network_id_by_key[network_key]
+        ipv4_subnet_id                             = local.autoscaler_network_id_by_group_resolved[group_key]
         snapshot_id                                = local.first_nodepool_snapshot_id
-        cluster_config                             = base64encode(jsonencode(local.desired_cluster_config_by_network[network_key]))
-        cluster_config_sha256                      = sha256(jsonencode(local.desired_cluster_config_by_network[network_key]))
+        cluster_config                             = base64encode(jsonencode(local.desired_cluster_config_by_group[group_key]))
+        cluster_config_sha256                      = sha256(jsonencode(local.desired_cluster_config_by_group[group_key]))
         firewall_id                                = hcloud_firewall.k3s.id
         cluster_name                               = local.cluster_prefix
-        node_pools                                 = local.autoscaler_nodepools_by_network[network_key]
-        enable_ipv4                                = var.autoscaler_enable_public_ipv4 && (!local.use_nat_router || var.autoscaler_public_ipv4_bypass_nat_router)
-        enable_ipv6                                = var.autoscaler_enable_public_ipv6 && !local.use_nat_router
+        node_pools                                 = local.autoscaler_nodepools_by_group[group_key]
+        enable_ipv4                                = local.autoscaler_public_ipv4_by_group[group_key] && (!local.use_nat_router || var.autoscaler_public_ipv4_bypass_nat_router)
+        enable_ipv6                                = local.autoscaler_public_ipv6_by_group[group_key] && !local.use_nat_router
       }
     )
   ])
@@ -151,9 +201,12 @@ resource "terraform_data" "configure_autoscaler" {
   # Create/Apply the definition
   provisioner "remote-exec" {
     inline = concat(
-      ["${local.kubectl_cli} apply --server-side --field-manager=kube-hetzner --force-conflicts -f /tmp/autoscaler.yaml"],
       [
-        for autoscaler_name in values(local.autoscaler_name_by_network) :
+        "set -eu",
+        "${local.kubectl_cli} apply --server-side --field-manager=kube-hetzner --force-conflicts -f /tmp/autoscaler.yaml"
+      ],
+      [
+        for autoscaler_name in values(local.autoscaler_name_by_group) :
         "${local.kubectl_cli} -n kube-system wait --for=condition=available --timeout=300s deployment/${autoscaler_name}"
       ]
     )
